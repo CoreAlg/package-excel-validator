@@ -1,0 +1,41 @@
+{
+    "name": "corealg/excel-validator",
+    "description": "This package validate your excel file.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "excel",
+        "validator",
+        "php"
+    ],
+    "authors": [
+        {
+            "name": "Mizanur Rahman",
+            "email": "mizan3008@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": ">=7.0",
+        "phpoffice/phpspreadsheet": "^1.19"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "CoreAlg\\ExcelValidator\\": "src"
+        }
+    },
+    "minimum-stability": "dev",
+    "autoload-dev": {
+        "psr-4": {
+            "CoreAlg\\ExcelValidator\\Tests\\": "tests"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "test-f": "vendor/bin/phpunit --filter"
+    }
+}
