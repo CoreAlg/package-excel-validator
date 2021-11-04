@@ -4,8 +4,9 @@ namespace CoreAlg\ExcelValidator;
 
 use Exception;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
+use Rakit\Validation\Validator as RakitValidator;
 
-class ExcelValidator
+class Validator
 {
     public $tmp_upload_path = null;
 
@@ -15,14 +16,15 @@ class ExcelValidator
     private $path = null;
     private $error = null;
     private $validation_errors = [];
-    private $processed_data = [];
+    private $validated_data = [];
 
     private $spread_sheet_data = [];
-    private $spread_sheet_header = [];
+
+    private $rakitValidator;
 
     public function __construct()
     {
-        $this->path = storage_path('text-excel.xlsx');
+        $this->rakitValidator = new RakitValidator();
     }
 
     public function validate($file, array $rules): array
@@ -56,12 +58,20 @@ class ExcelValidator
 
         $this->validateOriginalData();
 
-        return [
-            'status' => 'success',
-            'message' => count($this->validation_errors) > 0 ? 'Validation errors' : '',
-            'validation_errors' => $this->validation_errors,
-            'data' => $this->processed_data,
-        ];
+        if (count($this->validation_errors) > 0) {
+            return [
+                'status' => 'error',
+                'message' => 'Validation error',
+                'errors' => $this->validation_errors,
+                'data' => $this->validated_data,
+            ];
+        } else {
+            return [
+                'status' => 'success',
+                'message' => '',
+                'data' => $this->validated_data,
+            ];
+        }
     }
 
     private function validateTheFileType(): bool
@@ -112,14 +122,20 @@ class ExcelValidator
 
             $this->spread_sheet_data = $excel_sheet->toArray();
 
-            $this->spread_sheet_header = $this->spread_sheet_data[0];
+            $spread_sheet_header = $this->spread_sheet_data[0];
+
+            foreach ($spread_sheet_header as $key => $hc_value) {
+                $spread_sheet_header[$key] = $this->replaceAnySpecialCharactersFromString(strtolower($hc_value));
+            }
 
             // unset the header row from the original data array
             unset($this->spread_sheet_data[0]);
 
-            foreach ($this->spread_sheet_header as $key => $hc_value) {
-                $this->spread_sheet_header[$key] = $this->replaceAnySpecialCharactersFromString(strtolower($hc_value));
+            // change the numeric index to a proper readable name
+            foreach ($this->spread_sheet_data as $key => $row) {
+                $this->spread_sheet_data[$key] = array_combine($spread_sheet_header, $row);
             }
+
             return true;
         } catch (Exception $ex) {
             $this->error = $ex->getMessage();
@@ -134,26 +150,29 @@ class ExcelValidator
 
     private function validateOriginalData(): void
     {
-        foreach ($this->spread_sheet_data as $key => $row) {
-            $row_data = [];
-            foreach ($this->rules as $rule_key => $rule) {
+        foreach ($this->spread_sheet_data as $index => $row) {
 
-                // get the original data index from the spread_sheet_header array based on the  rule_key
-                $spread_sheet_data_index = array_search($rule_key, $this->spread_sheet_header);
+            $actual_row_number = $index + 1;
 
-                $spread_sheet_data_value = $row[$spread_sheet_data_index] ?? "";
+            $validation = $this->rakitValidator->validate($row, $this->rules);
 
-                if ($rule === 'required') {
-                    if (strlen($spread_sheet_data_value) < 1) {
-                        $new_key = $key + 1;
-                        $this->validation_errors[] = "{$rule_key} is missing at row {$new_key}";
-                    }
+            if ($validation->fails()) {
+                foreach ($validation->errors()->all() as $error) {
+                    $this->validation_errors[] = "{$error} at row {$actual_row_number}";
                 }
-
-                $row_data[$rule_key] = $spread_sheet_data_value;
             }
 
-            $this->processed_data[] = $row_data;
+            $validated_data = $validation->getValidData();
+
+            $invalid_data = $validation->getInvalidData();
+
+            if (count($invalid_data) > 0) {
+                foreach ($invalid_data as $key => $value) {
+                    $validated_data[$key] = null;
+                }
+            }
+
+            $this->validated_data[$index] = $validated_data;
         }
     }
 
@@ -169,9 +188,10 @@ class ExcelValidator
         $this->path = null;
         $this->error = null;
         $this->validation_errors = [];
-        $this->processed_data = [];
+        $this->validated_data = [];
 
         $this->spread_sheet_data = [];
-        $this->spread_sheet_header = [];
+
+        $this->rakitValidator = null;
     }
 }
