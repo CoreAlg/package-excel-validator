@@ -18,7 +18,6 @@ composer require corealg/excel-validator
 
 ## Usage
 
-**Get pagination summary**
 ```php
 <?php
 // initilaize Core Excel Validator
