@@ -8,23 +8,23 @@ use Rakit\Validation\Validator as RakitValidator;
 
 class Validator
 {
-    public $tmp_upload_path = null;
+    public $temp_upload_path = null;
 
     private $file = [];
     private $rules = null;
 
     private $path = null;
     private $error = null;
-    private $validation_errors = [];
-    private $validated_data = [];
+    private $code = null;
 
     private $spread_sheet_data = [];
 
-    private $rakitValidator;
+    private $rakitValidator = null;
 
     public function __construct()
     {
         $this->rakitValidator = new RakitValidator();
+        $this->temp_upload_path = sys_get_temp_dir();
     }
 
     public function validate($file, array $rules): array
@@ -33,45 +33,29 @@ class Validator
         $this->rules = $rules;
 
         if ($this->validateTheFileType() === false) {
-            return [
-                'status' => 'error',
-                'message' => $this->error,
-                'data' => null,
-            ];
+            return $this->error_response();
         }
 
         if ($this->uploadTheFile() === false) {
-            return [
-                'status' => 'error',
-                'message' => $this->error,
-                'data' => null,
-            ];
+            return $this->error_response();
         }
 
         if ($this->readTheFile() === false) {
-            return [
-                'status' => 'error',
-                'message' => $this->error,
-                'data' => null,
-            ];
+            return $this->error_response();
         }
 
-        $this->validateOriginalData();
-
-        if (count($this->validation_errors) > 0) {
-            return [
-                'status' => 'error',
-                'message' => 'Validation error',
-                'errors' => $this->validation_errors,
-                'data' => $this->validated_data,
-            ];
-        } else {
-            return [
-                'status' => 'success',
-                'message' => '',
-                'data' => $this->validated_data,
-            ];
+        if ($this->validateSheet() === false) {
+            return $this->error_response();
         }
+
+        $data = $this->getValidatedData();
+
+        return [
+            'status' => 'success',
+            'code' => 200,
+            'errors' => [],
+            'data' => $data,
+        ];
     }
 
     private function validateTheFileType(): bool
@@ -84,7 +68,8 @@ class Validator
         ];
 
         if (!in_array($this->file["type"], $allowed_file_type)) {
-            $this->error = "Invalid File Type. Upload Excel File.";
+            $this->code = 422;
+            $this->error = ["Invalid File Type. Upload Excel File."];
             return false;
         }
 
@@ -94,20 +79,19 @@ class Validator
     private function uploadTheFile(): bool
     {
         try {
-            $temp = explode(".", $this->file['name']);
-            $new_file_name = 'temp-excel-file-' . round(microtime(true)) . '.' . end($temp);
+            $temp_name = explode(".", $this->file['name']);
+            $new_file_name = 'temp-excel-file-' . round(microtime(true)) . '.' . end($temp_name);
 
-            if (is_null($this->tmp_upload_path)) {
-                $target_path = storage_path("{$new_file_name}");
-            } else {
-                $target_path = "{$this->tmp_upload_path}/{$new_file_name}";
-            }
+            $target_path = "{$this->temp_upload_path}/{$new_file_name}";
 
             move_uploaded_file($this->file["tmp_name"], $target_path);
+
+            // store the actual readable path, so we can use it during read the file
             $this->path = $target_path;
             return true;
         } catch (Exception $ex) {
-            $this->error = $ex->getMessage();
+            $this->error = [$ex->getMessage()];
+            $this->code = 500;
             return false;
         }
     }
@@ -138,7 +122,8 @@ class Validator
 
             return true;
         } catch (Exception $ex) {
-            $this->error = $ex->getMessage();
+            $this->error = [$ex->getMessage()];
+            $this->code = 500;
             return false;
         }
     }
@@ -148,8 +133,10 @@ class Validator
         return preg_replace('/[^A-Za-z0-9\-]/', $replacement, $string);
     }
 
-    private function validateOriginalData(): void
+    private function validateSheet()
     {
+        $validate = true;
+
         foreach ($this->spread_sheet_data as $index => $row) {
 
             $actual_row_number = $index + 1;
@@ -157,23 +144,52 @@ class Validator
             $validation = $this->rakitValidator->validate($row, $this->rules);
 
             if ($validation->fails()) {
+
+                $validate = false;
+
+                $this->code = 422;
+
                 foreach ($validation->errors()->all() as $error) {
-                    $this->validation_errors[] = "{$error} at row {$actual_row_number}";
+                    $this->error[] = "{$error} at row {$actual_row_number}";
                 }
             }
+        }
 
-            $validated_data = $validation->getValidData();
+        return $validate;
+    }
 
-            $invalid_data = $validation->getInvalidData();
+    private function getValidatedData(): array
+    {
+        $my_data = [];
+
+        foreach ($this->spread_sheet_data as $index => $row) {
+
+            $validation = $this->rakitValidator->validate($row, $this->rules);
+
+            $valid_data = $validation->getValidData();
+
+            $invalid_data = (array) $validation->getInvalidData();
 
             if (count($invalid_data) > 0) {
                 foreach ($invalid_data as $key => $value) {
-                    $validated_data[$key] = null;
+                    $valid_data[$key] = null;
                 }
             }
 
-            $this->validated_data[$index] = $validated_data;
+            $my_data[$index] = $valid_data;
         }
+
+        return $my_data;
+    }
+
+    private function error_response(): array
+    {
+        return [
+            'status' => 'error',
+            'code' => $this->code,
+            'errors' => $this->error,
+            'data' => null,
+        ];
     }
 
     public function __destruct()
@@ -182,16 +198,17 @@ class Validator
             unlink($this->path);
         }
 
-        $this->file = [];
-        $this->rules = null;
+        $$this->temp_upload_path = null;
 
-        $this->path = null;
-        $this->error = null;
-        $this->validation_errors = [];
-        $this->validated_data = [];
+        $$this->file = [];
+        $$this->rules = null;
 
-        $this->spread_sheet_data = [];
+        $$this->path = null;
+        $$this->error = null;
+        $$this->code = null;
 
-        $this->rakitValidator = null;
+        $$this->spread_sheet_data = [];
+
+        $$this->rakitValidator = null;
     }
 }
