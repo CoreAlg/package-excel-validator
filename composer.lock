@@ -661,7 +661,7 @@
             "description": "PHP Laravel like standalone validation library",
             "support": {
                 "issues": "https://github.com/rakit/validation/issues",
-                "source": "https://github.com/rakit/validation/tree/v1.4.0"
+                "source": "https://github.com/rakit/validation/tree/master"
             },
             "time": "2020-08-27T05:07:01+00:00"
         },

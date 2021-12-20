@@ -1,12 +1,13 @@
 {
     "name": "corealg/excel-validator",
-    "description": "This package validate your excel file.",
+    "description": "This package helps you to validate your excel sheet cell by cell. You do not need to store data blindly, you can rule each cell to match your expectation.",
     "type": "library",
     "license": "MIT",
     "keywords": [
         "laravel",
         "excel",
         "validator",
+        "spreadsheet",
         "php"
     ],
     "authors": [
